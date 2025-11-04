@@ -1,20 +1,17 @@
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Ellipse2D;
 import java.net.URL;
 
 import javax.swing.ImageIcon;
 import javax.swing.JPanel;
 
 public class Panel extends JPanel {//672是棋盘上能成五子的数目
-	private URL blackImgURL = GobangGame.class.getResource("green.png");
-	private ImageIcon black = new ImageIcon(blackImgURL);
-	private URL whiteImgURL = GobangGame.class.getResource("red.png");
-	private ImageIcon white = new ImageIcon(whiteImgURL);
-	private URL currentImgURL = GobangGame.class.getResource("new_red.png");
-	private ImageIcon current = new ImageIcon(currentImgURL);
+	// 使用绘制的方式代替图片加载棋子
 	private int i, j, k, m, n, icount;
 	private int[][] board = new int[16][16];//0为玩家棋子，1是电脑棋子，2是空
 	private boolean[][][] ptable = new boolean[16][16][672];
@@ -226,12 +223,72 @@ public class Panel extends JPanel {//672是棋盘上能成五子的数目
 	}
 
 	public void mouseClick() {
-		if (!this.over)
-			if (this.player) {
-				if (this.oldx < 520 && this.oldy < 520) {
-					int m1 = m, n1 = n;
-					m = (oldx - 33) / 30;
-					n = (oldy - 33) / 30;
+	if (!this.over)
+		if (this.player) {
+			if (this.oldx < 520 && this.oldy < 520) {
+				int m1 = m, n1 = n;
+				m = (oldx - 33) / 30;
+				n = (oldy - 33) / 30;
+				
+				// 固定棋子模式处理
+				if (gameMode == 1) {
+					if (pcount >= 18 || ccount >= 18) {
+						// 棋子数量已满，进入移动模式
+						if (!isMovingPiece) {
+							// 选择要移动的棋子
+							if (board[m][n] == 0) {
+								selectedPieceX = m;
+								selectedPieceY = n;
+								isMovingPiece = true;
+							}
+						} else {
+							// 移动棋子到目标位置
+							if (isValidMove(selectedPieceX, selectedPieceY, m, n)) {
+								board[m][n] = 0;
+								board[selectedPieceX][selectedPieceY] = 2;
+								isMovingPiece = false;
+								selectedPieceX = -1;
+								selectedPieceY = -1;
+								
+								// 更新连子信息
+								updateWinInfo();
+								this.player = false;
+								this.computer = true;
+							} else if (board[m][n] == 0) {
+								// 选择另一个自己的棋子
+								selectedPieceX = m;
+								selectedPieceY = n;
+							} else {
+								// 取消选择
+								isMovingPiece = false;
+								selectedPieceX = -1;
+								selectedPieceY = -1;
+							}
+						}
+					} else {
+						// 普通落子模式
+						if (this.board[m][n] == 2) {
+							this.bout++;
+							this.board[m][n] = 0;
+							pcount++;
+							if ((ccount == 18) && (pcount == 18)) {
+								this.tie = true;
+								this.over = true;
+							}
+							for (i = 0; i < 672; i++) {
+								if (this.ptable[m][n][i] && this.win[0][i] != 7)
+									this.win[0][i]++;
+								if (this.ctable[m][n][i]) {
+									this.ctable[m][n][i] = false;
+									this.win[1][i] = 7;
+								}
+							}
+							this.player = false;
+							this.computer = true;
+						}
+					}
+				} else {
+					// 普通模式
 					if (this.board[m][n] == 2) {
 						this.bout++;
 						this.board[m][n] = 0;
@@ -242,7 +299,7 @@ public class Panel extends JPanel {//672是棋盘上能成五子的数目
 						}
 						for (i = 0; i < 672; i++) {
 							if (this.ptable[m][n][i] && this.win[0][i] != 7)
-								this.win[0][i]++; // 给黑子的所有五连子可能的加载当前连子数
+								this.win[0][i]++;
 							if (this.ctable[m][n][i]) {
 								this.ctable[m][n][i] = false;
 								this.win[1][i] = 7;
@@ -250,12 +307,63 @@ public class Panel extends JPanel {//672是棋盘上能成五子的数目
 						}
 						this.player = false;
 						this.computer = true;
-					} else {
-						m = m1;
-						n = n1;
 					}
 				}
 			}
+		}
+	}
+	
+	private boolean isValidMove(int fromX, int fromY, int toX, int toY) {
+		// 检查目标位置是否为空
+		if (board[toX][toY] != 2) return false;
+		
+		// 检查是否只移动了一格
+		int dx = Math.abs(toX - fromX);
+		int dy = Math.abs(toY - fromY);
+		return (dx == 1 && dy == 0) || (dx == 0 && dy == 1) || (dx == 1 && dy == 1);
+	}
+	
+	private void updateWinInfo() {
+		// 重新计算所有连子信息
+		for (i = 0; i < 2; i++)
+			for (j = 0; j < 672; j++)
+				win[i][j] = 0;
+		
+		// 重置权值表
+		for (i = 0; i < 16; i++)
+			for (j = 0; j < 16; j++)
+				for (k = 0; k < 672; k++) {
+					ptable[i][j][k] = true;
+					ctable[i][j][k] = true;
+				}
+		
+		// 更新玩家连子
+		for (i = 0; i < 16; i++)
+			for (j = 0; j < 16; j++)
+				if (board[i][j] == 0)
+					for (k = 0; k < 672; k++)
+						if (ptable[i][j][k]) {
+							win[0][k]++;
+						}
+		
+		// 更新电脑连子
+		for (i = 0; i < 16; i++)
+			for (j = 0; j < 16; j++)
+				if (board[i][j] == 1)
+					for (k = 0; k < 672; k++)
+						if (ctable[i][j][k]) {
+							win[1][k]++;
+						}
+	}
+	
+	// 设置游戏模式
+	public void setGameMode(int mode) {
+		this.gameMode = mode;
+	}
+	
+	// 设置技能开关
+	public void setSkillEnabled(boolean enabled) {
+		this.skillEnabled = enabled;
 	}
 
 	public void updatePaint(Graphics g) {
@@ -284,39 +392,25 @@ public class Panel extends JPanel {//672是棋盘上能成五子的数目
 			for (i = 0; i <= 15; i++)
 				for (j = 0; j <= 15; j++) { // 如果board元素值为0，则该坐标处为黑子
 					if (this.board[i][j] == 0) {
-						g.drawImage(
-								black.getImage(),
-								i * 30 + 31,
-								j * 30 + 31,
-								black.getImage().getWidth(
-										black.getImageObserver()) - 3,
-								black.getImage().getHeight(
-										black.getImageObserver()) - 3, black
-										.getImageObserver());
+						Graphics2D g2d = (Graphics2D) g;
+						g2d.setColor(Color.BLACK);
+						g2d.fill(new Ellipse2D.Double(i * 30 + 31, j * 30 + 31, 24, 24));
 					}
 					// 如果board元素值为1，则该坐标处为白子
 					if (this.board[i][j] == 1) {
-						g.drawImage(
-								white.getImage(),
-								i * 30 + 31,
-								j * 30 + 31,
-								white.getImage().getWidth(
-										white.getImageObserver()) - 3,
-								white.getImage().getHeight(
-										white.getImageObserver()) - 3, white
-										.getImageObserver());
+						Graphics2D g2d = (Graphics2D) g;
+						g2d.setColor(Color.WHITE);
+						g2d.fill(new Ellipse2D.Double(i * 30 + 31, j * 30 + 31, 24, 24));
 					}
 				}
 			// 画出白子（电脑）当前所下子，便于辨认
-			if (this.board[m][n] != 2)
-				g.drawImage(
-						current.getImage(),
-						m * 30 + 31,
-						n * 30 + 31,
-						current.getImage().getWidth(current.getImageObserver()) - 4,
-						current.getImage()
-								.getHeight(current.getImageObserver()) - 4,
-						current.getImageObserver());
+			if (this.board[m][n] != 2) {
+				Graphics2D g2d = (Graphics2D) g;
+				g2d.setColor(Color.RED);
+				g2d.draw(new Ellipse2D.Double(m * 30 + 30, n * 30 + 30, 26, 26));
+				g2d.setColor(this.board[m][n] == 0 ? Color.BLACK : Color.WHITE);
+				g2d.fill(new Ellipse2D.Double(m * 30 + 31, n * 30 + 31, 24, 24));
+			}
 			// 判断输赢情况
 			// 人赢
 			if (this.pwin)
